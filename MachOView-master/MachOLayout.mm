@@ -2364,6 +2364,24 @@ struct CompareSectionByName
   NSString * lastNodeCaption; // for error message
   
   // ============== Mach Header ===========
+    
+/*
+ 
+ #define
+ MATCH_STRUCT(obj,location) \
+   
+ struct obj const * obj = (struct obj *)[self imageAt:(location)];
+ if (!obj) [NSException raise:@"null exception" format:@#obj " is null"];
+ 
+ ((mach_header->cputype & CPU_ARCH_ABI64) == CPU_ARCH_ABI64);
+ 
+ */
+//    mach_header,imageOffset
+    struct mach_header const * mach_header = (struct mach_header *)[self imageAt:(imageOffset)];
+    
+    BOOL bol = ((mach_header->cputype & CPU_ARCH_ABI64) == CPU_ARCH_ABI64);
+
+    
   if ([self is64bit] == NO)
   {
     MATCH_STRUCT(mach_header,imageOffset)

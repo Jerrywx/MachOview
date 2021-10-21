@@ -1106,21 +1106,27 @@ NSString * const MVStatusTaskTerminated           = @"MVStatusTaskTerminated";
              location:(uint32_t)location
                length:(uint32_t)length
 {
+    /// 获取 magic
   uint32_t magic = *(uint32_t*)((uint8_t *)[fileData bytes] + location);
   
   switch (magic)
   {
-    case FAT_MAGIC:
+    case FAT_MAGIC: /// 胖二进制
     case FAT_CIGAM:
     {
-      struct fat_header fat_header;
-      [fileData getBytes:&fat_header range:NSMakeRange(location, sizeof(struct fat_header))];
-      if (magic == FAT_CIGAM)
+//        struct fat_header {
+//            uint32_t    magic;        /* FAT_MAGIC or FAT_MAGIC_64 */
+//            uint32_t    nfat_arch;    /* number of structs that follow */
+//        };
+        struct fat_header fat_header; /// 胖二进制头部
+        /// 获取胖二进制头部信息
+        [fileData getBytes:&fat_header range:NSMakeRange(location, sizeof(struct fat_header))];
+      if (magic == FAT_CIGAM) /// 小端存储
         swap_fat_header(&fat_header, NX_LittleEndian);
       [self createFatLayout:parent fat_header:&fat_header];
     } break;
       
-    case MH_MAGIC:
+    case MH_MAGIC:  /// 32 位
     case MH_CIGAM:
     {
       struct mach_header mach_header;
@@ -1130,7 +1136,7 @@ NSString * const MVStatusTaskTerminated           = @"MVStatusTaskTerminated";
       [self createMachOLayout:parent mach_header:&mach_header];
     } break;
       
-    case MH_MAGIC_64:
+    case MH_MAGIC_64:   /// 64 位
     case MH_CIGAM_64:
     {
       struct mach_header_64 mach_header_64;
@@ -1148,33 +1154,49 @@ NSString * const MVStatusTaskTerminated           = @"MVStatusTaskTerminated";
 }
 
 //----------------------------------------------------------------------------
+/// 创建胖二进制文件
 -(void)createFatLayout:(MVNode *)node
-            fat_header:(struct fat_header const *)fat_header
-{
-  node.caption = @"Fat Binary";
-  FatLayout * layout = [FatLayout layoutWithDataController:self rootNode:node];
-  
-  [node.userInfo setObject:layout forKey:MVLayoutUserInfoKey];
-  
-  [layouts addObject:layout];
-  for (uint32_t nimg = 0; nimg < fat_header->nfat_arch; ++nimg)
-  {      
-    // need to make copy for byte swapping
-    struct fat_arch fat_arch;
-    [fileData getBytes:&fat_arch range:NSMakeRange(sizeof(struct fat_header) + nimg * sizeof(struct fat_arch), sizeof(struct fat_arch))];
-    swap_fat_arch(&fat_arch, 1, NX_LittleEndian);
+            fat_header:(struct fat_header const *)fat_header {
     
-    MVNode * archNode = [node insertChild:nil location:fat_arch.offset length:fat_arch.size];
+    /// 胖二进制文件
+    node.caption = @"Fat Binary";
+    FatLayout * layout = [FatLayout layoutWithDataController:self rootNode:node];
+  
+    [node.userInfo setObject:layout forKey:MVLayoutUserInfoKey];
+  
+    [layouts addObject:layout];
+    /// fat_header->nfat_arch 二进制文件数量
+    for (uint32_t nimg = 0; nimg < fat_header->nfat_arch; ++nimg) {
+        // need to make copy for byte swapping
+        /// 取出头部信息
+        /// sizeof(struct fat_header)   -> 8
+        /// sizeof(struct fat_arch) -> 20
+        
+//        struct fat_arch {
+//            cpu_type_t        cputype;        /* cpu specifier (int) */
+//            cpu_subtype_t     cpusubtype;     /* machine specifier (int) */
+//            uint32_t          offset;         /* file offset to this object file */
+//            uint32_t          size;           /* size of this object file */
+//            uint32_t          align;          /* alignment as a power of 2 */
+//        };
+//        (fat_arch) $2 = (cputype = 12, cpusubtype = 9, offset = 16384, size = 19159024, align = 14)
+        struct fat_arch fat_arch;
+        [fileData getBytes:&fat_arch
+                     range:NSMakeRange(sizeof(struct fat_header) + nimg * sizeof(struct fat_arch), sizeof(struct fat_arch))];
+        
+        swap_fat_arch(&fat_arch, 1, NX_LittleEndian);/// 小端存储 A!
+        /// 创建 MVNode
+        MVNode * archNode = [node insertChild:nil location:fat_arch.offset length:fat_arch.size];
 
-    if (*(uint64_t*)((uint8_t *)[fileData bytes] + fat_arch.offset) == *(uint64_t*)"!<arch>\n")
-    {
-      [self createArchiveLayout:archNode machine:[self getMachine:fat_arch.cputype]];
+        if (*(uint64_t*)((uint8_t *)[fileData bytes] + fat_arch.offset) == *(uint64_t*)"!<arch>\n")
+        {
+            [self createArchiveLayout:archNode machine:[self getMachine:fat_arch.cputype]];
+        }
+        else
+        {
+            [self createLayouts:archNode location:fat_arch.offset length:fat_arch.size];
+        }
     }
-    else
-    {
-      [self createLayouts:archNode location:fat_arch.offset length:fat_arch.size];
-    }
-  }
 }
 
 //----------------------------------------------------------------------------
