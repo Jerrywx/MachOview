@@ -991,6 +991,7 @@ NSString * const MVStatusTaskTerminated           = @"MVStatusTaskTerminated";
 }
 
 //----------------------------------------------------------------------------
+/// 获取 CPU 子类型
 -(NSString *)getARM64Cpu:(cpu_subtype_t)cpusubtype
 {
   switch (cpusubtype)
@@ -1046,9 +1047,10 @@ NSString * const MVStatusTaskTerminated           = @"MVStatusTaskTerminated";
 }
 
 //----------------------------------------------------------------------------
+/// 64 位 Mach-O
 -(void)createMachO64Layout:(MVNode *)node
-            mach_header_64:(struct mach_header_64 const *)mach_header_64
-{
+            mach_header_64:(struct mach_header_64 const *)mach_header_64 {
+
   NSString * machine = [self getMachine:mach_header_64->cputype];
 
   node.caption = [NSString stringWithFormat:@"%@ (%@)",
@@ -1139,11 +1141,25 @@ NSString * const MVStatusTaskTerminated           = @"MVStatusTaskTerminated";
     case MH_MAGIC_64:   /// 64 位
     case MH_CIGAM_64:
     {
-      struct mach_header_64 mach_header_64;
-      [fileData getBytes:&mach_header_64 range:NSMakeRange(location, sizeof(struct mach_header_64))];
-      if (magic == MH_CIGAM_64)
-        swap_mach_header_64(&mach_header_64, NX_LittleEndian);
-      [self createMachO64Layout:parent mach_header_64:&mach_header_64];
+        /// Mach-O 头部
+        struct mach_header_64 mach_header_64;
+        /// 读取 mach_header_64 数据
+//        struct mach_header_64 {
+//            uint32_t    magic;            /* mach magic number identifier */
+//            cpu_type_t    cputype;        /* cpu specifier */
+//            cpu_subtype_t    cpusubtype;  /* machine specifier */
+//            uint32_t    filetype;         /* type of file */
+//            uint32_t    ncmds;            /* number of load commands */
+//            uint32_t    sizeofcmds;       /* the size of all the load commands */
+//            uint32_t    flags;            /* flags */
+//            uint32_t    reserved;         /* reserved */
+//        };
+        [fileData getBytes:&mach_header_64 range:NSMakeRange(location, sizeof(struct mach_header_64))];
+        
+        /// 小端处理
+        if (magic == MH_CIGAM_64)
+            swap_mach_header_64(&mach_header_64, NX_LittleEndian);
+        [self createMachO64Layout:parent mach_header_64:&mach_header_64];
     } break;
     
     default:
@@ -1185,6 +1201,15 @@ NSString * const MVStatusTaskTerminated           = @"MVStatusTaskTerminated";
                      range:NSMakeRange(sizeof(struct fat_header) + nimg * sizeof(struct fat_arch), sizeof(struct fat_arch))];
         
         swap_fat_arch(&fat_arch, 1, NX_LittleEndian);/// 小端存储 A!
+        
+        NSLog(@"=============== Mach-O %d ===============", nimg);
+        NSLog(@"===== cputype %d", fat_arch.cputype);
+        NSLog(@"===== cpusubtype %d", fat_arch.cpusubtype);
+        NSLog(@"===== offset %d", fat_arch.offset);
+        NSLog(@"===== size %d", fat_arch.size);
+        NSLog(@"===== align %d", fat_arch.align);
+        NSLog(@"");NSLog(@"");
+        
         /// 创建 MVNode
         MVNode * archNode = [node insertChild:nil location:fat_arch.offset length:fat_arch.size];
 
